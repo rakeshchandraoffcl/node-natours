@@ -22,9 +22,26 @@ exports.getAllTours = async (req, res) => {
     // EXCLUDE FROM QUERY OBJECT
     excludeFields.forEach(field => delete queryObj[field]);
     console.log(queryObj);
+    // CONVERT TO STRING
+    // 🧠 WE NEED TO ADD $ WITH THE OPERATOR 🧠
+    let queryString = JSON.stringify(queryObj);
+    queryString = queryString.replace(
+      /\b(gte|gt|lte|lt)\b/g,
+      match => `$${match}`
+    );
 
     // 🔥 BUILD QUERY OBJECT 🔥
-    const query = Tour.find(queryObj);
+    let query = Tour.find(JSON.parse(queryString));
+
+    // SORTING
+    // 🧠 sort=price [sort price by ascending] | sort=-price [sort price by descending] | sort=price,-rating [if price same then sort by rating descending] 🧠
+    if (req.query.sort) {
+      const sortString = req.query.sort.split(',').join(' ');
+      query = query.sort(sortString);
+    } else {
+      // SHOW NEWEST ONE FIRST
+      query = query.sort('-createdAt');
+    }
 
     // 🔥 EXECUTE QUERY OBJECT 🔥
     const tours = await query;
