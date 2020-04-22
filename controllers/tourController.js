@@ -1,4 +1,6 @@
+// const mongoose = require('mongoose');
 const Tour = require('../models/tourModel');
+const APIFeatures = require('../utils/apiFeatures');
 
 // ⛳ check id middleware ⛳
 
@@ -13,38 +15,22 @@ const Tour = require('../models/tourModel');
 //   // next();
 // };
 
+exports.topFIveCheap = (req, res, next) => {
+  req.query.limit = 5;
+  req.query.sort = '-ratingsAverage,price';
+  req.query.fields = 'name,price,ratingsAverage,summary,difficulty';
+  next();
+};
+
 exports.getAllTours = async (req, res) => {
   try {
-    // CREATE A COPY
-    const queryObj = { ...req.query };
-    // EXCLUDE FIELDS
-    const excludeFields = ['page', 'sort', 'limit', 'fields'];
-    // EXCLUDE FROM QUERY OBJECT
-    excludeFields.forEach(field => delete queryObj[field]);
-    console.log(queryObj);
-    // CONVERT TO STRING
-    // 🧠 WE NEED TO ADD $ WITH THE OPERATOR 🧠
-    let queryString = JSON.stringify(queryObj);
-    queryString = queryString.replace(
-      /\b(gte|gt|lte|lt)\b/g,
-      match => `$${match}`
-    );
-
-    // 🔥 BUILD QUERY OBJECT 🔥
-    let query = Tour.find(JSON.parse(queryString));
-
-    // SORTING
-    // 🧠 sort=price [sort price by ascending] | sort=-price [sort price by descending] | sort=price,-rating [if price same then sort by rating descending] 🧠
-    if (req.query.sort) {
-      const sortString = req.query.sort.split(',').join(' ');
-      query = query.sort(sortString);
-    } else {
-      // SHOW NEWEST ONE FIRST
-      query = query.sort('-createdAt');
-    }
-
     // 🔥 EXECUTE QUERY OBJECT 🔥
-    const tours = await query;
+    const features = new APIFeatures(Tour.find(), req.query)
+      .filter()
+      .sort()
+      .limit()
+      .pagination();
+    const tours = await features.queryForDocument;
 
     // 🔥 SEND RESPONSE 🔥
     res.status(200).json({
@@ -56,9 +42,10 @@ exports.getAllTours = async (req, res) => {
       }
     });
   } catch (error) {
+    // console.log(error.message);
     res.status(404).json({
       status: 'fail',
-      message: error
+      message: error.message
     });
   }
 };
@@ -132,6 +119,108 @@ exports.deleteTour = async (req, res) => {
     res.status(404).json({
       status: 'fail',
       message: error
+    });
+  }
+};
+
+exports.getTourStats = async (req, res) => {
+  try {
+    const stats = await Tour.aggregate([
+      {
+        $match: {
+          // 🧠 filter by id 🧠
+          // _id: { $eq: new mongoose.Types.ObjectId('5e9be6002b33662748ba67c9') }
+          ratingsAverage: { $gte: 4.5 }
+        }
+      },
+      {
+        $group: {
+          _id: '$ratingsAverage',
+          count: { $sum: 1 },
+          totalRatingsQuantity: { $sum: '$ratingsQuantity' },
+          averageRating: { $avg: '$ratingsAverage' },
+          averagePrice: { $avg: '$price' },
+          minPrice: { $min: '$price' },
+          maxPrice: { $max: '$price' }
+        }
+      }
+      // 🧠 add field 🧠
+      // {
+      //   $addFields: {
+      //     round: { $round: ['$averageRating', 0] }
+      //   }
+      // }
+      // 🧠 Remove field 🧠
+      // { $unset: ['averageRating'] }
+    ]);
+
+    res.status(200).json({
+      status: 'success',
+      data: {
+        stats
+      }
+    });
+  } catch (error) {
+    res.status(404).json({
+      status: 'fail',
+      message: error
+    });
+  }
+};
+
+exports.getMonthlyPlan = async (req, res) => {
+  try {
+    const { year } = req.params;
+    const stats = await Tour.aggregate([
+      {
+        $unwind: '$startDates'
+      },
+      {
+        $match: {
+          startDates: {
+            $gte: new Date(`${year}-01-01`),
+            $lte: new Date(`${year}-12-31`)
+          }
+        }
+      },
+      {
+        $group: {
+          _id: { $month: '$startDates' },
+          counts: { $sum: 1 },
+          names: { $push: '$name' }
+        }
+      },
+      {
+        $addFields: {
+          month: '$_id'
+        }
+      },
+      {
+        $sort: {
+          counts: -1
+        }
+      },
+      {
+        $limit: 12
+      },
+      {
+        $project: {
+          _id: 0
+        }
+      }
+    ]);
+
+    res.status(200).json({
+      status: 'success',
+      length: stats.length,
+      data: {
+        stats
+      }
+    });
+  } catch (error) {
+    res.status(404).json({
+      status: 'fail',
+      message: error.message
     });
   }
 };
