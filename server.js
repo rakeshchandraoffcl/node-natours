@@ -8,7 +8,6 @@ process.on('uncaughtException', error => {
   process.exit(1);
 });
 
-
 dotenv.config({ path: './config.env' });
 
 const db = process.env.LOCAL_DATABASE_URL;
