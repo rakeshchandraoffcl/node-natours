@@ -43,6 +43,14 @@ const handleDuplicateEntryDB = err => {
   const message = `Duplicate value ${val}, please use another one`;
   return new Apperror(message, 400);
 };
+
+const JsonWebTokenError = () =>
+  new Apperror('Invalid token, please log in again', 401);
+
+const tokenExpiredError = () =>
+  new Apperror('Token expired, please log in again', 401);
+const timeOut = () => new Apperror('Response timeout', 503);
+
 module.exports = (error, req, res, next) => {
   error.statusCode = error.statusCode || 500;
   error.status = error.status || 'error';
@@ -60,6 +68,15 @@ module.exports = (error, req, res, next) => {
     }
     if (err.code === 11000) {
       err = handleDuplicateEntryDB(err);
+    }
+    if (err.name === 'JsonWebTokenError') {
+      err = JsonWebTokenError();
+    }
+    if (err.name === 'TokenExpiredError') {
+      err = tokenExpiredError();
+    }
+    if (err.code === 'ETIMEDOUT') {
+      err = timeOut();
     }
     productionError(res, err);
   }
